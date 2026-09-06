@@ -1,0 +1,6 @@
+{
+  "name": "همراه قرآن",
+  "description": "برنامه همراه قرآن، ساخته شده توسط سپهر قلعه سفیدی، شامل قرائت، ترجمه سلیس فارسی، تلاوت صوتی، برنامه‌ریزی مطالعه، زمان‌بندی و چک‌لیست روزانه",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

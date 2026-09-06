@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="66dp"
+    android:height="66dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <!-- Subtle Golden Halo / Rays -->
+    <path
+        android:fillColor="#33E5C158"
+        android:pathData="M32,4 A28,28 0 1,0 32,60 A28,28 0 1,0 32,4 Z" />
+
+    <!-- Open Book Rihal / Quran Stand Base -->
+    <path
+        android:fillColor="#C59B27"
+        android:pathData="M18,48 L32,41 L46,48 L48,45 L32,38 L16,45 Z" />
+
+    <!-- Left Page -->
+    <path
+        android:fillColor="#F7F5EE"
+        android:pathData="M31,18 C25,17 18,19 12,22 L12,42 C18,39 25,37 31,38 Z" />
+
+    <!-- Right Page -->
+    <path
+        android:fillColor="#FFFDF7"
+        android:pathData="M33,18 C39,17 46,19 52,22 L52,42 C46,39 39,37 33,38 Z" />
+
+    <!-- Book Spine / Center Fold -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M31,17.5 L33,17.5 L33,38.5 L31,38.5 Z" />
+
+    <!-- Left Page Lines -->
+    <path
+        android:fillColor="#C8BA99"
+        android:pathData="M17,26 L27,24.5 L27,26 L17,27.5 Z
+                          M16,30 L27,28.5 L27,30 L16,31.5 Z
+                          M17,34 L27,32.5 L27,34 L17,35.5 Z" />
+
+    <!-- Right Page Lines -->
+    <path
+        android:fillColor="#C8BA99"
+        android:pathData="M37,24.5 L47,26 L47,27.5 L37,26 Z
+                          M37,28.5 L48,30 L48,31.5 L37,30 Z
+                          M37,32.5 L47,34 L47,35.5 L37,34 Z" />
+
+    <!-- Center Ornament Star / Crescent -->
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M32,10 L33.5,13.5 L37,14 L34.5,16.5 L35,20 L32,18 L29,20 L29.5,16.5 L27,14 L30.5,13.5 Z" />
+</vector>

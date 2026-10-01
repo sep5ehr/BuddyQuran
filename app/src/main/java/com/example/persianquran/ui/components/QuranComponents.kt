@@ -66,18 +66,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.persianquran.data.model.AudioTrackState
 import com.example.persianquran.data.model.ReaderSettings
 import com.example.persianquran.data.model.Verse
+import com.example.persianquran.data.model.toFontFamily
 import com.example.persianquran.data.surah.toPersianDigits
 import com.example.persianquran.ui.viewmodel.Screen
 import com.example.ui.components.formatDurationToPersian
+import com.example.ui.components.sanitizeQuranText
 
 @Composable
 fun PersianBottomBar(
@@ -604,14 +609,32 @@ fun AyahCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Arabic Quranic Uthmani Text
+            // Arabic Quranic Uthmani Text with Verse Number
+            val verseNumberColor = MaterialTheme.colorScheme.primary
+            val annotatedVerseText = remember(verse.textUthmani, verse.verseNumber, settings.quranFont, verseNumberColor) {
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontFamily = settings.quranFont.toFontFamily())) {
+                        append(verse.textUthmani.sanitizeQuranText())
+                    }
+                    append(" ")
+                    withStyle(
+                        SpanStyle(
+                            fontFamily = FontFamily.Default,
+                            fontWeight = FontWeight.Medium,
+                            color = verseNumberColor
+                        )
+                    ) {
+                        append("﴿${verse.verseNumber.toPersianDigits()}﴾")
+                    }
+                }
+            }
+
             Text(
-                text = "${verse.textUthmani} ﴿${verse.verseNumber.toPersianDigits()}﴾",
+                text = annotatedVerseText,
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontSize = settings.arabicFontSize.sp,
                     lineHeight = (settings.arabicFontSize * settings.lineSpacing).sp,
-                    textAlign = TextAlign.Right,
-                    fontFamily = FontFamily.Serif
+                    textAlign = TextAlign.Right
                 ),
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier

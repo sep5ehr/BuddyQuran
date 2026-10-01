@@ -114,7 +114,32 @@ class QuranAudioPlayer(
                     Log.d(TAG, "Playing from local file: $localPath")
                     localPath
                 } else {
+                    // Auto-save: Every played part is automatically saved locally for offline use
+                    val reciterId = currentReciterId
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            repository.downloadVerseAudio(verse, reciterId)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Background auto-save failed for ${verse.verseKey}: ${e.message}")
+                        }
+                    }
                     verse.audioUrl
+                }
+
+                // If next verse is available in playlist, pre-save in background
+                if (currentIndex + 1 in playlist.indices) {
+                    val nextVerse = playlist[currentIndex + 1]
+                    val reciterId = currentReciterId
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val nextLocal = repository.getDownloadedAudioPath(nextVerse.verseKey, reciterId)
+                            if (nextLocal == null) {
+                                repository.downloadVerseAudio(nextVerse, reciterId)
+                            }
+                        } catch (e: Exception) {
+                            // Non-critical background pre-fetch
+                        }
+                    }
                 }
 
                 if (audioSource.isNullOrBlank()) {

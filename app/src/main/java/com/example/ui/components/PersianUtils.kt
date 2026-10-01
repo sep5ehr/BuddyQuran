@@ -38,6 +38,24 @@ fun formatDurationToPersian(millis: Long): String {
 }
 
 /**
+ * Normalizes and sanitizes Uthmani Quranic text to eliminate unrenderable
+ * characters (such as U+06DF small high rounded zero in words like أُولئِكَ,
+ * footnote stars, or unmapped Quranic symbols) so that all characters render
+ * crisply and cleanly without star artifacts.
+ */
+fun String.sanitizeQuranText(): String {
+    return this
+        .replace("\u06DF", "") // ARABIC SMALL HIGH ROUNDED ZERO (removes stars in words like أُو۟لَـٰٓئِكَ)
+        .replace("\u06E3", "") // ARABIC SMALL LOW SEEN
+        .replace("\u06EB", "") // ARABIC EMPTY CENTRE HIGH STOP
+        .replace("\u0602", "") // ARABIC FOOTNOTE MARKER
+        .replace("\u0620", "") // ARABIC LETTER KASHMIRI YEH placeholder
+        .replace("\u063F", "") // ARABIC LETTER FARSI YEH placeholder
+        .replace("\u065F", "") // ARABIC WAVY HAMZA BELOW
+        .replace("\u066F", "") // ARABIC LETTER DOTLESS QAF placeholder
+}
+
+/**
  * Formats file size in bytes to Persian readable string (e.g. ۱.۲ مگابایت)
  */
 fun formatFileSizeToPersian(bytes: Long): String {

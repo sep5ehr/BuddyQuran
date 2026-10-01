@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material3.AlertDialog
@@ -53,14 +55,12 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.example.persianquran.ui.components.AutoSelectOutlinedTextField
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,9 +89,9 @@ enum class DayStatus(val label: String) {
 }
 
 enum class ScheduleFilter(val title: String) {
-    ALL("همه روزها"),
-    TODAY("امروز"),
     UNCOMPLETED("انجام نشده"),
+    TODAY("امروز"),
+    ALL("همه روزها"),
     OVERDUE("عقب‌افتاده"),
     COMPLETED("انجام شده")
 }
@@ -102,8 +102,11 @@ fun ChecklistScreen(
     activePlan: ReadingPlan?,
     schedule: List<PlanDaySchedule>,
     items: List<ChecklistItem>,
+    allPlans: List<ReadingPlan> = emptyList(),
+    onActivatePlan: ((Long) -> Unit)? = null,
     onToggleDayCompletion: (Long, Int, Boolean) -> Unit,
     onOpenReader: (Int, Int) -> Unit,
+    onOpenPlanDay: ((PlanDaySchedule) -> Unit)? = null,
     onAddItem: (String, String) -> Unit,
     onUpdateItem: (Long, String, String) -> Unit,
     onToggleItem: (Long, Boolean) -> Unit,
@@ -114,11 +117,8 @@ fun ChecklistScreen(
     onNavigateToPlanning: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var selectedFilter by remember { mutableStateOf(ScheduleFilter.ALL) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var itemToEdit by remember { mutableStateOf<ChecklistItem?>(null) }
-    var showMenu by remember { mutableStateOf(false) }
+    var selectedFilter by remember { mutableStateOf(ScheduleFilter.UNCOMPLETED) }
+    var showSwitchPlanDialog by remember { mutableStateOf(false) }
 
     val startOfTodayMillis = remember {
         Calendar.getInstance().apply {
@@ -159,9 +159,6 @@ fun ChecklistScreen(
     val totalScheduleCount = schedule.size
     val scheduleProgress = if (totalScheduleCount > 0) (completedScheduleCount.toFloat() / totalScheduleCount.toFloat()) else 0f
 
-    val completedHabitCount = items.count { it.isCompleted }
-    val totalHabitCount = items.size
-
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -178,64 +175,21 @@ fun ChecklistScreen(
             ) {
                 Column {
                     Text(
-                        text = "چک‌لیست و برنامه مطالعه",
+                        text = "جدول برنامه مطالعه",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "پیگیری جامع روزهای تلاوت و تکالیف قرآنی",
+                        text = "پیگیری جامع روزهای تلاوت و برنامه ختم",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-
-                if (selectedTabIndex == 1) {
-                    Button(
-                        onClick = { showAddDialog = true },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("btn_add_checklist_item")
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "مورد جدید", style = MaterialTheme.typography.labelMedium)
-                    }
-                }
             }
         }
 
-        // Two Tabs: "برنامه مطالعه" (Full Plan Schedule) & "عادات و اذکار" (Daily checklist habits)
-        item {
-            TabRow(
-                selectedTabIndex = selectedTabIndex,
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.clip(RoundedCornerShape(14.dp))
-            ) {
-                Tab(
-                    selected = selectedTabIndex == 0,
-                    onClick = { selectedTabIndex = 0 },
-                    text = {
-                        Text(
-                            text = "جدول برنامه (${totalScheduleCount.toPersianDigits()} روز)",
-                            fontWeight = if (selectedTabIndex == 0) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                )
-                Tab(
-                    selected = selectedTabIndex == 1,
-                    onClick = { selectedTabIndex = 1 },
-                    text = {
-                        Text(
-                            text = "عادات و اذکار (${totalHabitCount.toPersianDigits()})",
-                            fontWeight = if (selectedTabIndex == 1) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                )
-            }
-        }
-
-        // TAB 0: Full Plan Schedule
-        if (selectedTabIndex == 0) {
-            if (activePlan == null || schedule.isEmpty()) {
+        // Full Plan Schedule
+        if (activePlan == null || schedule.isEmpty()) {
                 // Empty state when no plan is active
                 item {
                     Card(
@@ -271,14 +225,26 @@ fun ChecklistScreen(
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Spacer(modifier = Modifier.height(18.dp))
-                            Button(
-                                onClick = onNavigateToPlanning,
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(text = "ایجاد برنامه جدید")
+                                Spacer(modifier = Modifier.height(18.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = onNavigateToPlanning,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(text = "ایجاد برنامه جدید")
+                                }
+                                if (allPlans.isNotEmpty() && onActivatePlan != null) {
+                                    OutlinedButton(
+                                        onClick = { showSwitchPlanDialog = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.SwapHoriz, contentDescription = null)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(text = "تغییر برنامه")
+                                    }
+                                }
                             }
                         }
                     }
@@ -312,19 +278,44 @@ fun ChecklistScreen(
                                     )
                                 }
 
-                                if (activePlan.isPaused) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "توقف موقت برنامه",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.error,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (allPlans.size > 1 && onActivatePlan != null) {
+                                        OutlinedButton(
+                                            onClick = { showSwitchPlanDialog = true },
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.SwapHoriz,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تغییر برنامه",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    if (activePlan.isPaused) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "توقف موقت برنامه",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -400,7 +391,10 @@ fun ChecklistScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "موردی با این فیلتر یافت نشد.",
+                                    text = if (selectedFilter == ScheduleFilter.UNCOMPLETED)
+                                        "تمام برنامه‌های تا به امروز با موفقیت انجام شده‌اند! 🎉"
+                                    else
+                                        "موردی با این فیلتر یافت نشد.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -414,191 +408,19 @@ fun ChecklistScreen(
                             day = day,
                             status = status,
                             onToggleCompletion = { onToggleDayCompletion(day.planId, day.dayNumber, day.isCompleted) },
-                            onStartReading = { onOpenReader(day.startSurahId, day.startVerse) }
+                            onStartReading = {
+                                if (onOpenPlanDay != null) {
+                                    onOpenPlanDay(day)
+                                } else {
+                                    onOpenReader(day.startSurahId, day.startVerse)
+                                }
+                            }
                         )
                     }
                 }
             }
         }
-
-        // TAB 1: Habits & Daily Checklist Items
-        if (selectedTabIndex == 1) {
-            // Habit Progress summary
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "تکالیف و عادات روزانه",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${completedHabitCount.toPersianDigits()} از ${totalHabitCount.toPersianDigits()} انجام شده",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        val habitRatio = if (totalHabitCount > 0) completedHabitCount.toFloat() / totalHabitCount.toFloat() else 0f
-                        LinearProgressIndicator(
-                            progress = { habitRatio },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.surface
-                        )
-                    }
-                }
-            }
-
-            if (items.isEmpty()) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "هنوز تکلیف یا ذکری ثبت نشده است.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(onClick = { showAddDialog = true }) {
-                                Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("افزودن مورد جدید")
-                            }
-                        }
-                    }
-                }
-            } else {
-                items(items, key = { it.id }) { item ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (item.isCompleted)
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            else
-                                MaterialTheme.colorScheme.surface
-                        ),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onToggleItem(item.id, item.isCompleted) }
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = { onToggleItem(item.id, item.isCompleted) },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (item.isCompleted) Icons.Default.CheckCircle else Icons.Outlined.CheckCircleOutline,
-                                        contentDescription = null,
-                                        tint = if (item.isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (item.isCompleted) FontWeight.Normal else FontWeight.Bold,
-                                        textDecoration = if (item.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                                        color = if (item.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = item.category,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                    )
-                                }
-                            }
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { itemToEdit = item },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "ویرایش",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onDeleteItem(item.id) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "حذف",
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
-
-    // Dialog: Add Habit Item
-    if (showAddDialog) {
-        AddEditChecklistDialog(
-            initialTitle = "",
-            initialCategory = "روزانه",
-            onDismiss = { showAddDialog = false },
-            onConfirm = { title, category ->
-                onAddItem(title, category)
-                showAddDialog = false
-            }
-        )
-    }
-
-    // Dialog: Edit Habit Item
-    itemToEdit?.let { item ->
-        AddEditChecklistDialog(
-            initialTitle = item.title,
-            initialCategory = item.category,
-            onDismiss = { itemToEdit = null },
-            onConfirm = { title, category ->
-                onUpdateItem(item.id, title, category)
-                itemToEdit = null
-            }
-        )
-    }
-}
 
 @Composable
 fun ScheduleDayCard(
@@ -739,6 +561,21 @@ fun ScheduleDayCard(
             }
         }
     }
+
+    if (showSwitchPlanDialog) {
+        SwitchPlanDialog(
+            allPlans = allPlans,
+            activePlanId = activePlan?.id,
+            onDismiss = { showSwitchPlanDialog = false },
+            onSelectPlan = { planId ->
+                onActivatePlan?.invoke(planId)
+            },
+            onNavigateToPlanning = {
+                showSwitchPlanDialog = false
+                onNavigateToPlanning()
+            }
+        )
+    }
 }
 
 @Composable
@@ -793,7 +630,7 @@ fun AddEditChecklistDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                AutoSelectOutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("عنوان تکلیف یا ذکر") },
@@ -801,7 +638,7 @@ fun AddEditChecklistDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                AutoSelectOutlinedTextField(
                     value = category,
                     onValueChange = { category = it },
                     label = { Text("دسته‌بندی (مثلاً: روزانه، تدبر، حفظ)") },
@@ -841,6 +678,129 @@ fun AddEditChecklistDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("انصراف")
+            }
+        }
+    )
+}
+
+@Composable
+fun SwitchPlanDialog(
+    allPlans: List<ReadingPlan>,
+    activePlanId: Long?,
+    onDismiss: () -> Unit,
+    onSelectPlan: (Long) -> Unit,
+    onNavigateToPlanning: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "انتخاب برنامه فعال",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (allPlans.isEmpty()) {
+                    Text(
+                        text = "هیچ برنامه‌ای ذخیره نشده است.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(allPlans, key = { it.id }) { plan ->
+                            val isCurrent = plan.id == activePlanId
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onSelectPlan(plan.id)
+                                        onDismiss()
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isCurrent)
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                border = if (isCurrent)
+                                    androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                                else null
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = plan.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            if (isCurrent) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(MaterialTheme.colorScheme.primary)
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "فعال",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onPrimary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            text = "${plan.method.titlePersian} • ${plan.totalDays.toPersianDigits()} روز",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Icon(
+                                        imageVector = if (isCurrent) Icons.Default.CheckCircle else Icons.Outlined.CheckCircleOutline,
+                                        contentDescription = null,
+                                        tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onDismiss()
+                onNavigateToPlanning()
+            }) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("برنامه جدید")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("بستن")
             }
         }
     )

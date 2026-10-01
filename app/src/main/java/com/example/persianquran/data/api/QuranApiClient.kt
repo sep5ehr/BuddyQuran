@@ -6,6 +6,7 @@ import com.example.BuildConfig
 import com.example.persianquran.data.model.SearchResultItem
 import com.example.persianquran.data.model.Verse
 import com.example.persianquran.data.surah.QuranMetadata
+import com.example.ui.components.sanitizeQuranText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -163,7 +164,7 @@ class QuranApiClient {
                     val vId = vObj.optInt("id", i + 1)
                     val vNum = vObj.optInt("verse_number", i + 1)
                     val vKey = vObj.optString("verse_key", "$chapterId:$vNum")
-                    val uthmani = vObj.optString("text_uthmani", "")
+                    val uthmani = vObj.optString("text_uthmani", "").sanitizeQuranText()
                     val pageNum = vObj.optInt("page_number", 1)
                     val juzNum = vObj.optInt("juz_number", 1)
 
@@ -254,7 +255,7 @@ class QuranApiClient {
                         surahNumber = surahNum,
                         verseNumber = verseNum,
                         surahNamePersian = surahName,
-                        textUthmani = text,
+                        textUthmani = text.sanitizeQuranText(),
                         translation = translationText
                     )
                 )

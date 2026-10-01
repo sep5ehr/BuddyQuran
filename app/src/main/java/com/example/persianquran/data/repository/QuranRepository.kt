@@ -12,6 +12,8 @@ import com.example.persianquran.data.model.SearchResultItem
 import com.example.persianquran.data.model.Surah
 import com.example.persianquran.data.model.Verse
 import com.example.persianquran.data.surah.QuranMetadata
+import com.example.persianquran.data.surah.QuranPageMetadata
+import com.example.ui.components.sanitizeQuranText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -53,7 +55,7 @@ class QuranRepository(
                         id = entity.verseNumber,
                         verseNumber = entity.verseNumber,
                         verseKey = entity.verseKey,
-                        textUthmani = entity.textUthmani,
+                        textUthmani = entity.textUthmani.sanitizeQuranText(),
                         chapterId = entity.surahNumber,
                         pageNumber = entity.pageNumber,
                         juzNumber = entity.juzNumber,
@@ -75,7 +77,7 @@ class QuranRepository(
                         verseKey = v.verseKey,
                         surahNumber = v.chapterId,
                         verseNumber = v.verseNumber,
-                        textUthmani = v.textUthmani,
+                        textUthmani = v.textUthmani.sanitizeQuranText(),
                         translation = v.translation,
                         pageNumber = v.pageNumber,
                         juzNumber = v.juzNumber,
@@ -97,7 +99,7 @@ class QuranRepository(
                     id = entity.verseNumber,
                     verseNumber = entity.verseNumber,
                     verseKey = entity.verseKey,
-                    textUthmani = entity.textUthmani,
+                    textUthmani = entity.textUthmani.sanitizeQuranText(),
                     chapterId = entity.surahNumber,
                     pageNumber = entity.pageNumber,
                     juzNumber = entity.juzNumber,
@@ -115,6 +117,61 @@ class QuranRepository(
         }
 
         emptyList()
+    }
+
+    /**
+     * Requirement 33: Returns ONLY the exact verses that belong to [pageNumber]
+     * according to QuranPageMetadata, strictly bounding by first and last verse of that page.
+     */
+    suspend fun getVersesForPage(
+        pageNumber: Int,
+        reciterId: Int = 7
+    ): List<Verse> = withContext(Dispatchers.IO) {
+        val safePage = pageNumber.coerceIn(1, QuranPageMetadata.TOTAL_PAGES)
+        val boundary = QuranPageMetadata.getPageBoundary(safePage)
+        getVersesForRange(
+            startSurahId = boundary.startSurahId,
+            startVerse = boundary.startVerse,
+            endSurahId = boundary.endSurahId,
+            endVerse = boundary.endVerse,
+            reciterId = reciterId
+        )
+    }
+
+    /**
+     * Requirement 33: Returns ONLY the verses within the exact bounded range
+     * from [startSurahId]:[startVerse] to [endSurahId]:[endVerse].
+     */
+    suspend fun getVersesForRange(
+        startSurahId: Int,
+        startVerse: Int,
+        endSurahId: Int,
+        endVerse: Int,
+        reciterId: Int = 7
+    ): List<Verse> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<Verse>()
+        val safeStartSurah = startSurahId.coerceIn(1, 114)
+        val safeEndSurah = endSurahId.coerceIn(1, 114)
+
+        for (sId in safeStartSurah..safeEndSurah) {
+            val allVerses = getVersesForSurah(sId, reciterId)
+            val filtered = allVerses.filter { verse ->
+                when {
+                    safeStartSurah == safeEndSurah -> {
+                        verse.verseNumber in startVerse..endVerse
+                    }
+                    sId == safeStartSurah -> {
+                        verse.verseNumber >= startVerse
+                    }
+                    sId == safeEndSurah -> {
+                        verse.verseNumber <= endVerse
+                    }
+                    else -> true
+                }
+            }
+            result.addAll(filtered)
+        }
+        result
     }
 
     suspend fun isQuranDataFullyCached(): Boolean = withContext(Dispatchers.IO) {
@@ -310,6 +367,23 @@ class QuranRepository(
             val fileName = "v_${verse.chapterId}_${verse.verseNumber}.mp3"
             val targetFile = File(audioDir, fileName)
 
+            if (targetFile.exists() && targetFile.length() > 0) {
+                quranDao.insertDownload(
+                    AudioDownloadEntity(
+                        verseKey = verse.verseKey,
+                        surahNumber = verse.chapterId,
+                        verseNumber = verse.verseNumber,
+                        reciterId = reciterId,
+                        filePath = targetFile.absolutePath,
+                        fileSize = targetFile.length(),
+                        downloadedAt = System.currentTimeMillis()
+                    )
+                )
+                return@withContext true
+            }
+
+            val tempFile = File(audioDir, "${fileName}.tmp")
+
             val url = URL(audioUrl)
             val connection = url.openConnection() as HttpURLConnection
             connection.connectTimeout = 15000
@@ -325,7 +399,7 @@ class QuranRepository(
 
             val fileLength = connection.contentLength
             val input = connection.inputStream
-            val output = FileOutputStream(targetFile)
+            val output = FileOutputStream(tempFile)
 
             val data = ByteArray(4096)
             var total: Long = 0
@@ -343,6 +417,11 @@ class QuranRepository(
             output.close()
             input.close()
 
+            if (tempFile.exists() && tempFile.length() > 0) {
+                if (targetFile.exists()) targetFile.delete()
+                tempFile.renameTo(targetFile)
+            }
+
             quranDao.insertDownload(
                 AudioDownloadEntity(
                     verseKey = verse.verseKey,
@@ -354,6 +433,7 @@ class QuranRepository(
                     downloadedAt = System.currentTimeMillis()
                 )
             )
+            Log.d(TAG, "Audio auto-saved for ${verse.verseKey} to ${targetFile.absolutePath}")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to download audio for ${verse.verseKey}: ${e.message}", e)

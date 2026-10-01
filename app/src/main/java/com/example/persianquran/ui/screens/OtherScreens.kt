@@ -1,5 +1,12 @@
 package com.example.persianquran.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,24 +27,35 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
@@ -50,25 +68,35 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
+import androidx.core.content.ContextCompat
 import com.example.persianquran.data.local.BookmarkEntity
+import com.example.persianquran.data.model.QuranFont
 import com.example.persianquran.data.model.QuranTheme
 import com.example.persianquran.data.model.ReaderSettings
 import com.example.persianquran.data.model.SearchResultItem
+import com.example.persianquran.data.model.toFontFamily
 import com.example.persianquran.data.surah.QuranMetadata
 import com.example.persianquran.data.surah.toPersianDigits
+import com.example.ui.components.sanitizeQuranText
 
 // ======================= SEARCH SCREEN =======================
 @Composable
@@ -78,6 +106,7 @@ fun SearchScreen(
     isSearching: Boolean,
     onQueryChanged: (String) -> Unit,
     onResultClick: (Int, Int) -> Unit,
+    quranFont: QuranFont = QuranFont.OLD,
     modifier: Modifier = Modifier
 ) {
     val sampleTopics = listOf("صبر", "نماز", "رحمت", "تقوا", "شکر", "بهشت", "هدایت")
@@ -248,12 +277,12 @@ fun SearchScreen(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = item.textUthmani,
+                                text = item.textUthmani.sanitizeQuranText(),
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = 17.sp,
                                     lineHeight = 26.sp,
                                     textAlign = TextAlign.Right,
-                                    fontFamily = FontFamily.Serif
+                                    fontFamily = quranFont.toFontFamily()
                                 )
                             )
                             if (item.translation.isNotBlank()) {
@@ -282,6 +311,7 @@ fun BookmarksScreen(
     onBookmarkClick: (Int, Int) -> Unit,
     onRemoveBookmark: (BookmarkEntity) -> Unit,
     onClearAll: () -> Unit,
+    quranFont: QuranFont = QuranFont.OLD,
     modifier: Modifier = Modifier
 ) {
     var showClearConfirmDialog by remember { mutableStateOf(false) }
@@ -385,11 +415,11 @@ fun BookmarksScreen(
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = b.arabicText,
+                                    text = b.arabicText.sanitizeQuranText(),
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontSize = 17.sp,
                                         lineHeight = 24.sp,
-                                        fontFamily = FontFamily.Serif,
+                                        fontFamily = quranFont.toFontFamily(),
                                         textAlign = TextAlign.Right
                                     )
                                 )
@@ -446,6 +476,7 @@ fun BookmarksScreen(
 fun SettingsScreen(
     settings: ReaderSettings,
     onUpdateTheme: (QuranTheme) -> Unit,
+    onUpdateQuranFont: (QuranFont) -> Unit = {},
     onUpdateArabicSize: (Float) -> Unit,
     onUpdateTranslationSize: (Float) -> Unit,
     onUpdateLineSpacing: (Float) -> Unit,
@@ -454,6 +485,11 @@ fun SettingsScreen(
     onUpdateSpeed: (Float) -> Unit,
     onToggleAutoAdvance: (Boolean) -> Unit,
     onToggleRepeatAyah: (Boolean) -> Unit,
+    onTogglePlayEntryAudio: (Boolean) -> Unit = {},
+    onTogglePlayExitAudio: (Boolean) -> Unit = {},
+    onToggleDailyReminder: (Boolean) -> Unit = {},
+    onUpdateReminderTime: (Int, Int) -> Unit = { _, _ -> },
+    onTestDailyReminder: () -> Unit = {},
     onClearAllBookmarks: () -> Unit = {},
     onClearAllPlans: () -> Unit = {},
     onClearAllChecklist: () -> Unit = {},
@@ -491,7 +527,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "حالت تم و پوسته",
+                            text = "ظاهر",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -500,21 +536,22 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     val themes = listOf(
-                        Pair(QuranTheme.SYSTEM, "هماهنگ با دستگاه"),
-                        Pair(QuranTheme.LIGHT, "روشن (کاغذ پوستین)"),
-                        Pair(QuranTheme.DARK, "تاریک (محیط شب)")
+                        Pair(QuranTheme.SYSTEM, "تم دستگاه"),
+                        Pair(QuranTheme.LIGHT, "روشن"),
+                        Pair(QuranTheme.DARK, "تیره")
                     )
 
                     themes.forEach { (t, label) ->
+                        val isSelected = settings.theme == t
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { onUpdateTheme(t) }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
-                                selected = settings.theme == t,
+                                selected = isSelected,
                                 onClick = { onUpdateTheme(t) },
                                 colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
                             )
@@ -550,6 +587,39 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    // Font changer (جدید vs قدیمی - default قدیمی)
+                    Text(
+                        text = "نوع قلم قرآن کریم",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val fontOptions = listOf(
+                        Pair(QuranFont.OLD, "قدیمی"),
+                        Pair(QuranFont.NEW, "جدید")
+                    )
+
+                    fontOptions.forEach { (fontOption, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onUpdateQuranFont(fontOption) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = settings.quranFont == fontOption,
+                                onClick = { onUpdateQuranFont(fontOption) },
+                                colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     // Arabic font size
                     Text(
                         text = "اندازه متن قرآن: ${settings.arabicFontSize.toInt().toPersianDigits()} واحد",
@@ -578,7 +648,7 @@ fun SettingsScreen(
                             text = "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = settings.arabicFontSize.sp,
-                                fontFamily = FontFamily.Serif,
+                                fontFamily = settings.quranFont.toFontFamily(),
                                 textAlign = TextAlign.Center
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -746,6 +816,374 @@ fun SettingsScreen(
             }
         }
 
+        // App Entry and Exit Audio Controls (Requirements: Bismillah on enter, Sadaqallah on exit)
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("app_audio_effects_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "صوت ورود و خروج از برنامه",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "پخش نوای تبرک در آغاز و پایان استفاده از برنامه",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Entry audio switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "پخش صوت هنگام ورود",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "«بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ» در هنگام باز کردن برنامه",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = settings.playEntryAudio,
+                            onCheckedChange = onTogglePlayEntryAudio,
+                            modifier = Modifier.testTag("switch_play_entry_audio"),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    // Exit audio switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "پخش صوت هنگام خروج",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "«صَدَقَ اللَّهُ الْعَلِيُّ الْعَظِيمُ» در هنگام ترک یا خروج از برنامه",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Switch(
+                            checked = settings.playExitAudio,
+                            onCheckedChange = onTogglePlayExitAudio,
+                            modifier = Modifier.testTag("switch_play_exit_audio"),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Daily Quran Plan Notification / Reminder (Requirements #96, #97, #98, #99)
+        item {
+            var showTimePickerDialog by remember { mutableStateOf(false) }
+            var showPermissionRationaleDialog by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+
+            val permissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) { isGranted ->
+                if (isGranted) {
+                    onToggleDailyReminder(true)
+                } else {
+                    Toast.makeText(
+                        context,
+                        "اجازه ارسال اعلان صادر نشد. برای دریافت یادآوری روزانه، این مجوز را فعال نمایید.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("daily_reminder_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.NotificationsActive,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "اعلان‌ها و یادآوری روزانه",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "یادآوری انجام برنامه مطالعه روزانه قرآن کریم",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Toggle Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "یادآوری برنامه روزانه",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (settings.dailyReminderEnabled) "فعال" else "غیرفعال",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (settings.dailyReminderEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Switch(
+                            checked = settings.dailyReminderEnabled,
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        val hasPermission = ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.POST_NOTIFICATIONS
+                                        ) == PackageManager.PERMISSION_GRANTED
+                                        if (hasPermission) {
+                                            onToggleDailyReminder(true)
+                                        } else {
+                                            showPermissionRationaleDialog = true
+                                        }
+                                    } else {
+                                        onToggleDailyReminder(true)
+                                    }
+                                } else {
+                                    onToggleDailyReminder(false)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            modifier = Modifier.testTag("toggle_daily_reminder_switch")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Time Selection Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "زمان یادآوری روزانه",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "ساعت ارسال اعلان در هر روز",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+
+                        FilledTonalButton(
+                            onClick = { showTimePickerDialog = true },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("select_reminder_time_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Text(
+                                    text = String.format(Locale.US, "%02d:%02d", settings.reminderHour, settings.reminderMinute).toPersianDigits(),
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Quick presets chips (Max 3 suggestions)
+                    Text(
+                        text = "انتخاب سریع زمان:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val presets = listOf(
+                            Triple(7, 0, "۰۷:۰۰"),
+                            Triple(13, 0, "۱۳:۰۰"),
+                            Triple(20, 0, "۲۰:۰۰")
+                        )
+                        presets.forEach { (h, m, label) ->
+                            val isSelected = settings.reminderHour == h && settings.reminderMinute == m
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onUpdateReminderTime(h, m) },
+                                label = {
+                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                        Text(text = label, style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Explanatory note (Requirements #96, #97, #99)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "اعلان یادآوری فقط در صورتی ارسال می‌گردد که یک برنامه مطالعه فعال و متوقف‌نشده برای روز جاری داشته باشید. در صورت عدم وجود برنامه فعال، هیچ اعلانی ارسال نخواهد شد.",
+                                style = MaterialTheme.typography.labelSmall,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Permission explanation dialog (Requirement #98)
+            if (showPermissionRationaleDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPermissionRationaleDialog = false },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.NotificationsActive,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "اجازه ارسال اعلان یادآوری",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = "برای دریافت یادآوری برنامه روزانه، اجازه ارسال اعلان را فعال کنید.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 22.sp
+                        )
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showPermissionRationaleDialog = false
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    onToggleDailyReminder(true)
+                                }
+                            }
+                        ) {
+                            Text(text = "اعطای دسترسی")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPermissionRationaleDialog = false }) {
+                            Text(text = "انصراف")
+                        }
+                    }
+                )
+            }
+
+            // Time Picker Dialog
+            if (showTimePickerDialog) {
+                PersianTimePickerDialog(
+                    initialHour = settings.reminderHour,
+                    initialMinute = settings.reminderMinute,
+                    onConfirm = { h, m ->
+                        onUpdateReminderTime(h, m)
+                        showTimePickerDialog = false
+                    },
+                    onDismiss = { showTimePickerDialog = false }
+                )
+            }
+        }
+
         // Data Management Card
         item {
             var showConfirmResetDialog by remember { mutableStateOf(false) }
@@ -898,23 +1336,154 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "منابع داده و تلاوت: اتصال مستقیم به سرورهای رسمی بنیاد قرآن (Quran Foundation) با ترجمه استاد مکارم شیرازی و ترتیل استاد پرهیزگار.",
-                        style = MaterialTheme.typography.labelSmall.copy(lineHeight = 18.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "نسخه ۱.۰.۰ • همراه قرآن",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        text = "نسخه 2.0.0",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+fun PersianTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onConfirm: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedHour by remember { mutableIntStateOf(initialHour) }
+    var selectedMinute by remember { mutableIntStateOf(initialMinute) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "تنظیم زمان یادآوری روزانه",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "ساعت و دقیقه مورد نظر برای دریافت اعلان روزانه را انتخاب کنید:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Time Display Card
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = String.format(Locale.US, "%02d", selectedHour).toPersianDigits(),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = " : ",
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%02d", selectedMinute).toPersianDigits(),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Hour Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ساعت (۰ تا ۲۳):",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { selectedHour = if (selectedHour > 0) selectedHour - 1 else 23 }) {
+                            Icon(imageVector = Icons.Default.Remove, contentDescription = "کاهش ساعت")
+                        }
+                        Text(
+                            text = selectedHour.toPersianDigits(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(36.dp),
+                            textAlign = TextAlign.Center
+                        )
+                        IconButton(onClick = { selectedHour = if (selectedHour < 23) selectedHour + 1 else 0 }) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "افزایش ساعت")
+                        }
+                    }
+                }
+
+                // Minute Stepper
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "دقیقه (۰ تا ۵۹):",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { selectedMinute = (selectedMinute - 5 + 60) % 60 }) {
+                            Icon(imageVector = Icons.Default.Remove, contentDescription = "کاهش دقیقه")
+                        }
+                        Text(
+                            text = String.format("%02d", selectedMinute).toPersianDigits(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(36.dp),
+                            textAlign = TextAlign.Center
+                        )
+                        IconButton(onClick = { selectedMinute = (selectedMinute + 5) % 60 }) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "افزایش دقیقه")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(selectedHour, selectedMinute) }) {
+                Text(text = "تأیید و ذخیره")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "انصراف")
+            }
+        }
+    )
 }

@@ -53,6 +53,7 @@ fun ScheduleScreen(
     schedule: List<PlanDaySchedule>,
     onToggleDayCompletion: (Long, Int, Boolean) -> Unit,
     onOpenReader: (Int, Int) -> Unit,
+    onOpenPlanDay: ((PlanDaySchedule) -> Unit)? = null,
     onBack: () -> Unit,
     onNavigateToPlanning: () -> Unit,
     modifier: Modifier = Modifier
@@ -253,7 +254,13 @@ fun ScheduleScreen(
 
                         // Direct button to read this portion
                         Button(
-                            onClick = { onOpenReader(day.startSurahId, day.startVerse) },
+                            onClick = {
+                                if (onOpenPlanDay != null) {
+                                    onOpenPlanDay(day)
+                                } else {
+                                    onOpenReader(day.startSurahId, day.startVerse)
+                                }
+                            },
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                         ) {

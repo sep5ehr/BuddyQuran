@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.example.persianquran.data.model.QuranTheme
@@ -34,6 +35,7 @@ import com.example.persianquran.ui.screens.ChecklistScreen
 import com.example.persianquran.ui.screens.FirstLaunchScreen
 import com.example.persianquran.ui.screens.HomeScreen
 import com.example.persianquran.ui.screens.PlanningScreen
+import com.example.persianquran.ui.screens.QuranFactsScreen
 import com.example.persianquran.ui.screens.ReaderScreen
 import com.example.persianquran.ui.screens.ScheduleScreen
 import com.example.persianquran.ui.screens.SearchScreen
@@ -47,6 +49,8 @@ import com.example.ui.theme.QuranAppTheme
 class MainActivity : ComponentActivity() {
 
     private val viewModel: QuranViewModel by viewModels()
+
+    private var isChangingConfig = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,6 +73,22 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+        if (!isChangingConfig) {
+            viewModel.onAppEntered()
+        }
+        isChangingConfig = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isChangingConfig = isChangingConfigurations
+        if (!isChangingConfig) {
+            viewModel.onAppLeft()
+        }
+    }
 }
 
 @Composable
@@ -87,12 +107,15 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
     val playerState by viewModel.playerState.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val selectedVerseForMenu by viewModel.selectedVerseForMenu.collectAsState()
+    val currentPage by viewModel.currentPage.collectAsState()
 
     val allPlans by viewModel.allPlans.collectAsState()
     val activePlan by viewModel.activePlan.collectAsState()
     val activeSchedule by viewModel.activePlanSchedule.collectAsState()
     val todayScheduleItem by viewModel.todayScheduleItem.collectAsState()
     val checklistItems by viewModel.checklistItems.collectAsState()
+    val activeStudyDay by viewModel.activeStudyDay.collectAsState()
+    val nextPlanDay by viewModel.nextPlanDay.collectAsState()
     val firstLaunchState by viewModel.firstLaunchState.collectAsState()
 
     var showFullPlayerDialog by remember { mutableStateOf(false) }
@@ -107,12 +130,18 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
         return
     }
 
+    val context = LocalContext.current
+    val activity = context as? ComponentActivity
+
     // System Back Press handling
-    BackHandler(enabled = currentScreen !is Screen.Home || selectedVerseForMenu != null) {
+    BackHandler(enabled = true) {
         if (selectedVerseForMenu != null) {
             viewModel.closeVerseMenu()
-        } else {
+        } else if (currentScreen !is Screen.Home) {
             viewModel.handleBack()
+        } else {
+            viewModel.onAppLeft()
+            activity?.finish()
         }
     }
 
@@ -161,7 +190,10 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         todayPlanItem = todayScheduleItem,
                         checklistItems = checklistItems,
                         onOpenSurah = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        onOpenPage = { pageNum -> viewModel.openPage(pageNum) },
+                        onOpenPlanDay = { day -> viewModel.openPlanDay(day) },
                         onNavigateToSurahs = { viewModel.navigateTo(Screen.SurahList) },
+                        onNavigateToQuranFacts = { viewModel.navigateTo(Screen.QuranFacts) },
                         onNavigateToSearch = { viewModel.navigateTo(Screen.Search) },
                         onNavigateToBookmarks = { viewModel.navigateTo(Screen.Bookmarks) },
                         onNavigateToPlanning = { viewModel.navigateTo(Screen.Planning) },
@@ -173,7 +205,8 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         },
                         onToggleChecklistItem = { id, comp ->
                             viewModel.toggleChecklistItem(id, comp)
-                        }
+                        },
+                        quranFont = settings.quranFont
                     )
                 }
 
@@ -186,7 +219,10 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         onPlaySurah = { surah ->
                             viewModel.openSurah(surah.id, 1)
                             viewModel.playCurrentSurahFromStart()
-                        }
+                        },
+                        onOpenSurahVerse = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        onOpenPage = { pageNum -> viewModel.openPage(pageNum) },
+                        quranFont = settings.quranFont
                     )
                 }
 
@@ -199,9 +235,17 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         playerState = playerState,
                         bookmarks = bookmarks,
                         selectedVerseForMenu = selectedVerseForMenu,
-                        onBack = { viewModel.handleBack() },
+                        currentPage = currentPage,
+                        activeStudyDay = activeStudyDay,
+                        nextPlanDay = nextPlanDay,
+                        onBack = { viewModel.exitReader() },
                         onNextSurah = { viewModel.nextSurah() },
                         onPreviousSurah = { viewModel.previousSurah() },
+                        onNextPage = { viewModel.nextPage() },
+                        onPreviousPage = { viewModel.previousPage() },
+                        onNextPlan = { viewModel.switchToNextPlanDay() },
+                        onFinishPlanStudy = { viewModel.completePlanStudyAndGoToChecklist() },
+                        onStudyCompleted = { viewModel.onStudyCompleted() },
                         onPlaySurah = { viewModel.playCurrentSurahFromStart() },
                         onPlayVerse = { verse -> viewModel.playVerse(verse) },
                         onToggleBookmark = { verse -> viewModel.toggleBookmark(verse) },
@@ -221,7 +265,15 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         onUpdateArabicSize = { viewModel.updateArabicFontSize(it) },
                         onUpdateTranslationSize = { viewModel.updateTranslationFontSize(it) },
                         onToggleShowTranslation = { viewModel.toggleShowTranslation(it) },
-                        onRetry = { viewModel.loadVersesForSurah(currentSurah.id, forceRefresh = true) },
+                        onUpdateQuranFont = { viewModel.updateQuranFont(it) },
+                        onSelectPage = { page -> viewModel.openPage(page) },
+                        onRetry = {
+                            if (currentPage != null) {
+                                viewModel.loadVersesForPage(currentPage!!)
+                            } else {
+                                viewModel.loadVersesForSurah(currentSurah.id, forceRefresh = true)
+                            }
+                        },
                         onClearScrollTarget = { viewModel.clearScrollTarget() }
                     )
                 }
@@ -232,7 +284,8 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         results = searchResults,
                         isSearching = isSearching,
                         onQueryChanged = { viewModel.onGlobalSearchQueryChanged(it) },
-                        onResultClick = { sId, vNum -> viewModel.openSurah(sId, vNum) }
+                        onResultClick = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        quranFont = settings.quranFont
                     )
                 }
 
@@ -241,7 +294,8 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         bookmarks = bookmarks,
                         onBookmarkClick = { sId, vNum -> viewModel.openSurah(sId, vNum) },
                         onRemoveBookmark = { viewModel.removeBookmark(it) },
-                        onClearAll = { viewModel.clearAllBookmarks() }
+                        onClearAll = { viewModel.clearAllBookmarks() },
+                        quranFont = settings.quranFont
                     )
                 }
 
@@ -251,8 +305,8 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         allPlans = allPlans,
                         activeSchedule = activeSchedule,
                         todayItem = todayScheduleItem,
-                        onCreatePlan = { title, method, days, startS, startV, endS, endV, startP, endP, dailyT ->
-                            viewModel.createPlan(title, method, days, startS, startV, endS, endV, startP, endP, dailyT)
+                        onCreatePlan = { title, method, days, startS, startV, endS, endV, startP, endP, dailyT, startMillis ->
+                            viewModel.createPlan(title, method, days, startS, startV, endS, endV, startP, endP, dailyT, startMillis)
                         },
                         onActivatePlan = { viewModel.activatePlan(it) },
                         onTogglePause = { id, paused -> viewModel.togglePlanPause(id, paused) },
@@ -261,6 +315,7 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                             viewModel.togglePlanDayCompletion(pId, dayNum, comp)
                         },
                         onOpenReader = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        onOpenPlanDay = { day -> viewModel.openPlanDay(day) },
                         onNavigateToSchedule = { viewModel.navigateTo(Screen.Schedule) }
                     )
                 }
@@ -273,6 +328,7 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                             viewModel.togglePlanDayCompletion(pId, dayNum, comp)
                         },
                         onOpenReader = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        onOpenPlanDay = { day -> viewModel.openPlanDay(day) },
                         onBack = { viewModel.handleBack() },
                         onNavigateToPlanning = { viewModel.navigateTo(Screen.Planning) }
                     )
@@ -283,10 +339,13 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         activePlan = activePlan,
                         schedule = activeSchedule,
                         items = checklistItems,
+                        allPlans = allPlans,
+                        onActivatePlan = { viewModel.activatePlan(it) },
                         onToggleDayCompletion = { pId, dayNum, comp ->
                             viewModel.togglePlanDayCompletion(pId, dayNum, comp)
                         },
                         onOpenReader = { sId, vNum -> viewModel.openSurah(sId, vNum) },
+                        onOpenPlanDay = { day -> viewModel.openPlanDay(day) },
                         onAddItem = { title, category -> viewModel.addChecklistItem(title, category) },
                         onUpdateItem = { id, title, category -> viewModel.updateChecklistItem(id, title, category) },
                         onToggleItem = { id, comp -> viewModel.toggleChecklistItem(id, comp) },
@@ -298,10 +357,18 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                     )
                 }
 
+                is Screen.QuranFacts -> {
+                    QuranFactsScreen(
+                        onNavigateBack = { viewModel.handleBack() },
+                        onOpenSurahAyah = { sId, vNum -> viewModel.openSurah(sId, vNum) }
+                    )
+                }
+
                 is Screen.Settings -> {
                     SettingsScreen(
                         settings = settings,
                         onUpdateTheme = { viewModel.updateTheme(it) },
+                        onUpdateQuranFont = { viewModel.updateQuranFont(it) },
                         onUpdateArabicSize = { viewModel.updateArabicFontSize(it) },
                         onUpdateTranslationSize = { viewModel.updateTranslationFontSize(it) },
                         onUpdateLineSpacing = { viewModel.updateLineSpacing(it) },
@@ -310,6 +377,11 @@ fun PersianQuranApp(viewModel: QuranViewModel) {
                         onUpdateSpeed = { viewModel.updatePlaybackSpeed(it) },
                         onToggleAutoAdvance = { viewModel.toggleAutoAdvance(it) },
                         onToggleRepeatAyah = { viewModel.toggleRepeatAyah(it) },
+                        onTogglePlayEntryAudio = { viewModel.togglePlayEntryAudio(it) },
+                        onTogglePlayExitAudio = { viewModel.togglePlayExitAudio(it) },
+                        onToggleDailyReminder = { viewModel.toggleDailyReminder(it) },
+                        onUpdateReminderTime = { h, m -> viewModel.updateReminderTime(h, m) },
+                        onTestDailyReminder = { viewModel.testDailyReminder() },
                         onClearAllBookmarks = { viewModel.clearAllBookmarks() },
                         onClearAllPlans = { viewModel.clearAllPlans() },
                         onClearAllChecklist = { viewModel.clearAllChecklist() },

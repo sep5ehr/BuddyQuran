@@ -10,12 +10,14 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
+import com.example.persianquran.audio.AppLifecycleAudioManager
 import com.example.persianquran.audio.QuranAudioPlayer
 import com.example.persianquran.data.local.BookmarkEntity
 import com.example.persianquran.data.local.QuranDatabase
 import com.example.persianquran.data.local.ReadingProgressEntity
 import com.example.persianquran.data.model.AudioQuality
 import com.example.persianquran.data.model.AudioTrackState
+import com.example.persianquran.data.model.QuranFont
 import com.example.persianquran.data.model.QuranTheme
 import com.example.persianquran.data.model.ReaderSettings
 import com.example.persianquran.data.model.SearchResultItem
@@ -23,7 +25,11 @@ import com.example.persianquran.data.model.Surah
 import com.example.persianquran.data.model.Verse
 import com.example.persianquran.data.repository.QuranRepository
 import com.example.persianquran.data.surah.QuranMetadata
+import com.example.persianquran.data.surah.QuranPageMetadata
 import com.example.persianquran.data.surah.toPersianDigits
+import com.example.ui.components.sanitizeQuranText
+import com.example.persianquran.reminder.DailyPlanReminderManager
+import com.example.persianquran.reminder.ReminderCheckResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,16 +41,18 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 sealed class Screen {
     data object Home : Screen()
     data object SurahList : Screen()
-    data class Reader(val surahId: Int, val targetVerseNumber: Int = 1) : Screen()
+    data class Reader(val surahId: Int, val targetVerseNumber: Int = 1, val pageNumber: Int? = null) : Screen()
     data object Search : Screen()
     data object Bookmarks : Screen()
     data object Planning : Screen()
     data object Schedule : Screen()
     data object Checklist : Screen()
+    data object QuranFacts : Screen()
     data object Settings : Screen()
 }
 
@@ -71,11 +79,7 @@ sealed class FirstLaunchState {
 
 class QuranViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val db = Room.databaseBuilder(
-        application,
-        QuranDatabase::class.java,
-        "persian_quran.db"
-    ).fallbackToDestructiveMigration().build()
+    private val db = QuranDatabase.getInstance(application)
 
     private val repository = QuranRepository(
         context = application,
@@ -88,6 +92,8 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         scope = viewModelScope
     )
 
+    val lifecycleAudio = AppLifecycleAudioManager(application)
+
     private val prefs: SharedPreferences = application.getSharedPreferences("quran_prefs", Context.MODE_PRIVATE)
 
     // Navigation state
@@ -99,6 +105,9 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
     // Reader state
     private val _currentSurah = MutableStateFlow<Surah>(QuranMetadata.surahs[0])
     val currentSurah: StateFlow<Surah> = _currentSurah.asStateFlow()
+
+    private val _currentPage = MutableStateFlow<Int?>(null)
+    val currentPage: StateFlow<Int?> = _currentPage.asStateFlow()
 
     private val _versesState = MutableStateFlow<UiState<List<Verse>>>(UiState.Idle)
     val versesState: StateFlow<UiState<List<Verse>>> = _versesState.asStateFlow()
@@ -178,6 +187,13 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         .map { entities -> entities.map { it.toModel() } }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    // Active Study Day tracking (when reading daily plan assignment)
+    private val _activeStudyDay = MutableStateFlow<com.example.persianquran.data.model.PlanDaySchedule?>(null)
+    val activeStudyDay: StateFlow<com.example.persianquran.data.model.PlanDaySchedule?> = _activeStudyDay.asStateFlow()
+
+    private val _nextPlanDay = MutableStateFlow<com.example.persianquran.data.model.PlanDaySchedule?>(null)
+    val nextPlanDay: StateFlow<com.example.persianquran.data.model.PlanDaySchedule?> = _nextPlanDay.asStateFlow()
+
     // First Launch Data Cache State
     private val _firstLaunchState = MutableStateFlow<FirstLaunchState>(FirstLaunchState.Checking)
     val firstLaunchState: StateFlow<FirstLaunchState> = _firstLaunchState.asStateFlow()
@@ -187,6 +203,13 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
     init {
         applySettingsToAudioPlayer(_settings.value)
         checkAndStartFirstLaunchDownload()
+        if (_settings.value.dailyReminderEnabled) {
+            DailyPlanReminderManager.scheduleDailyReminder(
+                application,
+                _settings.value.reminderHour,
+                _settings.value.reminderMinute
+            )
+        }
     }
 
     fun checkAndStartFirstLaunchDownload() {
@@ -245,6 +268,13 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         val speed = prefs.getFloat("playback_speed", 1.0f)
         val autoAdv = prefs.getBoolean("auto_advance", true)
         val repeat = prefs.getBoolean("repeat_ayah", false)
+        val reminderEnabled = prefs.getBoolean(DailyPlanReminderManager.KEY_REMINDER_ENABLED, false)
+        val reminderHour = prefs.getInt(DailyPlanReminderManager.KEY_REMINDER_HOUR, 20)
+        val reminderMinute = prefs.getInt(DailyPlanReminderManager.KEY_REMINDER_MINUTE, 0)
+        val playEntry = prefs.getBoolean("play_entry_audio", true)
+        val playExit = prefs.getBoolean("play_exit_audio", true)
+        val fontOrdinal = prefs.getInt("quran_font", QuranFont.OLD.ordinal)
+        val quranFont = QuranFont.entries.getOrElse(fontOrdinal) { QuranFont.OLD }
 
         return ReaderSettings(
             arabicFontSize = arabicSize,
@@ -252,10 +282,16 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
             lineSpacing = lineSpacing,
             showTranslation = showTr,
             theme = theme,
+            quranFont = quranFont,
             selectedReciterId = reciterId,
             playbackSpeed = speed,
             autoAdvance = autoAdv,
-            repeatAyah = repeat
+            repeatAyah = repeat,
+            dailyReminderEnabled = reminderEnabled,
+            reminderHour = reminderHour,
+            reminderMinute = reminderMinute,
+            playEntryAudio = playEntry,
+            playExitAudio = playExit
         )
     }
 
@@ -266,10 +302,16 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
             .putFloat("line_spacing", s.lineSpacing)
             .putBoolean("show_translation", s.showTranslation)
             .putInt("theme", s.theme.ordinal)
+            .putInt("quran_font", s.quranFont.ordinal)
             .putInt("reciter_id", s.selectedReciterId)
             .putFloat("playback_speed", s.playbackSpeed)
             .putBoolean("auto_advance", s.autoAdvance)
             .putBoolean("repeat_ayah", s.repeatAyah)
+            .putBoolean(DailyPlanReminderManager.KEY_REMINDER_ENABLED, s.dailyReminderEnabled)
+            .putInt(DailyPlanReminderManager.KEY_REMINDER_HOUR, s.reminderHour)
+            .putInt(DailyPlanReminderManager.KEY_REMINDER_MINUTE, s.reminderMinute)
+            .putBoolean("play_entry_audio", s.playEntryAudio)
+            .putBoolean("play_exit_audio", s.playExitAudio)
             .apply()
     }
 
@@ -292,10 +334,38 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         _currentScreen.value = screen
     }
 
+    fun exitReader() {
+        while (screenBackstack.isNotEmpty() && screenBackstack.last() is Screen.Reader) {
+            screenBackstack.removeAt(screenBackstack.lastIndex)
+        }
+        val targetScreen = if (screenBackstack.isNotEmpty()) {
+            screenBackstack.last()
+        } else {
+            Screen.Home
+        }
+        if (screenBackstack.isEmpty()) {
+            screenBackstack.add(Screen.Home)
+        }
+        _currentScreen.value = targetScreen
+        _currentPage.value = null
+        _activeStudyDay.value = null
+        _nextPlanDay.value = null
+    }
+
     fun handleBack(): Boolean {
+        if (_currentScreen.value is Screen.Reader) {
+            exitReader()
+            return true
+        }
         if (screenBackstack.size > 1) {
             screenBackstack.removeAt(screenBackstack.lastIndex)
-            _currentScreen.value = screenBackstack.last()
+            val prevScreen = screenBackstack.last()
+            _currentScreen.value = prevScreen
+            if (prevScreen is Screen.Reader) {
+                _currentPage.value = prevScreen.pageNumber
+            } else {
+                _currentPage.value = null
+            }
             return true
         }
         return false
@@ -304,10 +374,188 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
     // Reader actions
     fun openSurah(surahId: Int, targetVerseNumber: Int = 1) {
         val surah = QuranMetadata.getSurahById(surahId) ?: return
+        _currentPage.value = null
         _currentSurah.value = surah
         _targetVerseToScroll.value = targetVerseNumber
-        navigateTo(Screen.Reader(surahId, targetVerseNumber))
+        navigateTo(Screen.Reader(surahId, targetVerseNumber, pageNumber = null))
         loadVersesForSurah(surahId, targetVerseNumber)
+    }
+
+    /**
+     * Requirement 33: Opens an exact Quran page (1–604) and loads ONLY the verses
+     * belonging to that page as defined by QuranPageMetadata.
+     */
+    fun openPage(pageNumber: Int, targetVerse: Int? = null) {
+        val safePage = pageNumber.coerceIn(1, QuranPageMetadata.TOTAL_PAGES)
+        val boundary = QuranPageMetadata.getPageBoundary(safePage)
+        _currentPage.value = safePage
+        val surah = QuranMetadata.getSurahById(boundary.startSurahId) ?: QuranMetadata.surahs.first()
+        _currentSurah.value = surah
+        val target = targetVerse ?: boundary.startVerse
+        _targetVerseToScroll.value = target
+        navigateTo(Screen.Reader(surahId = boundary.startSurahId, targetVerseNumber = target, pageNumber = safePage))
+        loadVersesForPage(safePage)
+    }
+
+    fun loadVersesForPage(pageNumber: Int) {
+        val safePage = pageNumber.coerceIn(1, QuranPageMetadata.TOTAL_PAGES)
+        _currentPage.value = safePage
+        viewModelScope.launch {
+            _versesState.value = UiState.Loading
+            try {
+                val verses = repository.getVersesForPage(
+                    pageNumber = safePage,
+                    reciterId = _settings.value.selectedReciterId
+                )
+                if (verses.isNotEmpty()) {
+                    _versesState.value = UiState.Success(verses)
+                    val boundary = QuranPageMetadata.getPageBoundary(safePage)
+                    repository.saveReadingProgress(
+                        surahNumber = boundary.startSurahId,
+                        verseNumber = boundary.startVerse,
+                        surahNamePersian = "صفحه $safePage",
+                        scrollIndex = 0
+                    )
+                } else {
+                    _versesState.value = UiState.Error("خطا در بارگذاری آیات صفحه $safePage.")
+                }
+            } catch (e: Exception) {
+                _versesState.value = UiState.Error("خطا در بارگذاری اطلاعات صفحه: ${e.localizedMessage ?: "نامشخص"}")
+            }
+        }
+    }
+
+    fun nextPage() {
+        val curr = _currentPage.value ?: return
+        val studyDay = _activeStudyDay.value
+        if (studyDay != null) {
+            val targetEndPage = maxOf(studyDay.startPage, studyDay.endPage)
+            if (curr >= targetEndPage) {
+                // Today's limit reached: do not allow reading past today's quota
+                if (_nextPlanDay.value != null) {
+                    switchToNextPlanDay()
+                } else {
+                    completePlanStudyAndGoToChecklist()
+                }
+                return
+            }
+        }
+        val next = if (curr >= QuranPageMetadata.TOTAL_PAGES) 1 else curr + 1
+        openPage(next)
+    }
+
+    fun previousPage() {
+        val curr = _currentPage.value ?: return
+        val studyDay = _activeStudyDay.value
+        if (studyDay != null) {
+            val targetStartPage = studyDay.startPage.coerceIn(1, QuranPageMetadata.TOTAL_PAGES)
+            if (curr <= targetStartPage) {
+                return
+            }
+        }
+        val prev = if (curr <= 1) QuranPageMetadata.TOTAL_PAGES else curr - 1
+        openPage(prev)
+    }
+
+    fun openPlanDay(day: com.example.persianquran.data.model.PlanDaySchedule) {
+        _activeStudyDay.value = day
+        checkForNextPlanDay(day)
+        val sPage = if (day.startPage > 0) day.startPage else QuranPageMetadata.getPageForSurahVerse(day.startSurahId, day.startVerse)
+        openPage(sPage)
+    }
+
+    private fun checkForNextPlanDay(currentDay: com.example.persianquran.data.model.PlanDaySchedule) {
+        viewModelScope.launch {
+            try {
+                // 1. Check if another active/saved plan exists with an uncompleted assignment for today
+                val otherPlans = allPlans.value.filter { it.id != currentDay.planId && !it.isPaused }
+                var candidateNext: com.example.persianquran.data.model.PlanDaySchedule? = null
+                for (p in otherPlans) {
+                    val pSchedule = repository.getScheduleForPlanOnce(p.id)
+                    val candidate = pSchedule.firstOrNull { !it.isCompleted }
+                    if (candidate != null) {
+                        candidateNext = candidate.toModel()
+                        break
+                    }
+                }
+                // 2. If no other plan, check if another assignment exists for today in the current plan
+                if (candidateNext == null) {
+                    val currentSchedule = repository.getScheduleForPlanOnce(currentDay.planId)
+                    val startOfToday = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                    val startOfTomorrow = startOfToday + (24L * 60L * 60L * 1000L)
+                    candidateNext = currentSchedule.firstOrNull { 
+                        it.dayNumber != currentDay.dayNumber && !it.isCompleted && (it.dateMillis in startOfToday until startOfTomorrow || it.dateMillis < startOfToday)
+                    }?.toModel()
+                }
+                _nextPlanDay.value = candidateNext
+            } catch (e: Exception) {
+                _nextPlanDay.value = null
+            }
+        }
+    }
+
+    fun switchToNextPlanDay() {
+        val next = _nextPlanDay.value ?: return
+        val current = _activeStudyDay.value
+        if (current != null && !current.isCompleted) {
+            togglePlanDayCompletion(current.planId, current.dayNumber, false)
+        }
+        if (next.planId != activePlan.value?.id) {
+            activatePlan(next.planId)
+        }
+        openPlanDay(next)
+    }
+
+    fun onStudyCompleted() {
+        val studyDay = _activeStudyDay.value ?: return
+        if (!studyDay.isCompleted) {
+            togglePlanDayCompletion(studyDay.planId, studyDay.dayNumber, false)
+            _activeStudyDay.value = studyDay.copy(isCompleted = true)
+        }
+    }
+
+    fun completePlanStudyAndGoToChecklist() {
+        val current = _activeStudyDay.value
+        if (current != null && !current.isCompleted) {
+            togglePlanDayCompletion(current.planId, current.dayNumber, false)
+        }
+        _activeStudyDay.value = null
+        _nextPlanDay.value = null
+        Toast.makeText(getApplication(), "مطالعه امروز با موفقیت ثبت شد.", Toast.LENGTH_SHORT).show()
+        navigateTo(Screen.Checklist)
+    }
+
+    fun openBoundedRange(startSurahId: Int, startVerse: Int, endSurahId: Int, endVerse: Int) {
+        _currentPage.value = null
+        val safeStartSurah = startSurahId.coerceIn(1, 114)
+        val surah = QuranMetadata.getSurahById(safeStartSurah) ?: QuranMetadata.surahs.first()
+        _currentSurah.value = surah
+        _targetVerseToScroll.value = startVerse
+        navigateTo(Screen.Reader(surahId = safeStartSurah, targetVerseNumber = startVerse, pageNumber = null))
+        viewModelScope.launch {
+            _versesState.value = UiState.Loading
+            try {
+                val verses = repository.getVersesForRange(
+                    startSurahId = startSurahId,
+                    startVerse = startVerse,
+                    endSurahId = endSurahId,
+                    endVerse = endVerse,
+                    reciterId = _settings.value.selectedReciterId
+                )
+                if (verses.isNotEmpty()) {
+                    _versesState.value = UiState.Success(verses)
+                } else {
+                    _versesState.value = UiState.Error("خطا در بارگذاری آیات محدوده.")
+                }
+            } catch (e: Exception) {
+                _versesState.value = UiState.Error("خطا در بارگذاری اطلاعات: ${e.localizedMessage ?: "نامشخص"}")
+            }
+        }
     }
 
     fun loadVersesForSurah(surahId: Int, targetVerse: Int = 1, forceRefresh: Boolean = false) {
@@ -383,11 +631,22 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
 
     // Audio Playback
     fun playVerse(verse: Verse) {
+        val current = playerState.value
+        // If clicking on the currently selected/playing verse, toggle play/pause
+        if (current.currentSurahId == verse.chapterId && current.currentVerseNumber == verse.verseNumber) {
+            if (current.isPlaying) {
+                audioPlayer.pause()
+            } else {
+                audioPlayer.resume()
+            }
+            return
+        }
+
         val state = _versesState.value
         if (state is UiState.Success) {
             val reciter = QuranMetadata.reciters.find { it.id == _settings.value.selectedReciterId }
             val reciterName = reciter?.namePersian ?: "مشاری راشد العفاسی"
-            val index = state.data.indexOfFirst { it.verseNumber == verse.verseNumber }
+            val index = state.data.indexOfFirst { it.verseNumber == verse.verseNumber && it.chapterId == verse.chapterId }
             if (index != -1) {
                 audioPlayer.playVerseList(state.data, index, reciterName)
             } else {
@@ -468,7 +727,7 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         val surahName = surah?.namePersian ?: "سوره ${verse.chapterId}"
 
         val textToCopy = buildString {
-            append(verse.textUthmani)
+            append(verse.textUthmani.sanitizeQuranText())
             append(" [سوره $surahName، آیه ${verse.verseNumber.toPersianDigits()}]")
             if (includeTranslation && verse.translation.isNotBlank()) {
                 append("\n\nترجمه: ")
@@ -489,13 +748,13 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         val surahName = surah?.namePersian ?: "سوره ${verse.chapterId}"
 
         val shareText = buildString {
-            append(verse.textUthmani)
+            append(verse.textUthmani.sanitizeQuranText())
             append(" [سوره $surahName، آیه ${verse.verseNumber.toPersianDigits()}]")
             if (verse.translation.isNotBlank()) {
                 append("\n\nترجمه: ")
                 append(verse.translation)
             }
-            append("\n\n— قرآن کریم (Persian Quran)")
+            append("\n\nهمراه قران")
         }
 
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -530,6 +789,12 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Settings Updates
+    fun updateQuranFont(font: QuranFont) {
+        val newSettings = _settings.value.copy(quranFont = font)
+        _settings.value = newSettings
+        saveSettings(newSettings)
+    }
+
     fun updateArabicFontSize(size: Float) {
         val newSettings = _settings.value.copy(arabicFontSize = size)
         _settings.value = newSettings
@@ -588,6 +853,96 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         applySettingsToAudioPlayer(newSettings)
     }
 
+    fun toggleDailyReminder(enabled: Boolean) {
+        val updated = _settings.value.copy(dailyReminderEnabled = enabled)
+        _settings.value = updated
+        saveSettings(updated)
+        if (enabled) {
+            DailyPlanReminderManager.scheduleDailyReminder(
+                getApplication(),
+                updated.reminderHour,
+                updated.reminderMinute
+            )
+            val timeStr = String.format("%02d:%02d", updated.reminderHour, updated.reminderMinute).toPersianDigits()
+            Toast.makeText(getApplication(), "یادآوری روزانه در ساعت $timeStr فعال شد.", Toast.LENGTH_SHORT).show()
+        } else {
+            DailyPlanReminderManager.cancelDailyReminder(getApplication())
+            Toast.makeText(getApplication(), "یادآوری روزانه غیرفعال شد.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun updateReminderTime(hour: Int, minute: Int) {
+        val updated = _settings.value.copy(reminderHour = hour, reminderMinute = minute)
+        _settings.value = updated
+        saveSettings(updated)
+        if (updated.dailyReminderEnabled) {
+            DailyPlanReminderManager.scheduleDailyReminder(getApplication(), hour, minute)
+        }
+        val timeStr = String.format("%02d:%02d", hour, minute).toPersianDigits()
+        Toast.makeText(getApplication(), "زمان یادآوری به $timeStr تغییر یافت.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun testDailyReminder() {
+        viewModelScope.launch {
+            val result = DailyPlanReminderManager.checkAndSendReminder(getApplication(), isManualTest = true)
+            when (result) {
+                is ReminderCheckResult.Success -> {
+                    Toast.makeText(getApplication(), "اعلان یادآوری با موفقیت ارسال شد.\n${result.details}", Toast.LENGTH_LONG).show()
+                }
+                is ReminderCheckResult.NoActivePlan -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_LONG).show()
+                }
+                is ReminderCheckResult.PlanPaused -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_LONG).show()
+                }
+                is ReminderCheckResult.NoAssignmentToday -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_LONG).show()
+                }
+                is ReminderCheckResult.Disabled -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_SHORT).show()
+                }
+                is ReminderCheckResult.PermissionDenied -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_LONG).show()
+                }
+                is ReminderCheckResult.AlreadyNotified -> {
+                    Toast.makeText(getApplication(), result.message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    fun togglePlayEntryAudio(enabled: Boolean) {
+        val updated = _settings.value.copy(playEntryAudio = enabled)
+        _settings.value = updated
+        saveSettings(updated)
+    }
+
+    fun togglePlayExitAudio(enabled: Boolean) {
+        val updated = _settings.value.copy(playExitAudio = enabled)
+        _settings.value = updated
+        saveSettings(updated)
+    }
+
+    /**
+     * Called when application is opened/entered.
+     * Plays «بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ» if enabled and Quran audio is not actively playing.
+     */
+    fun onAppEntered() {
+        if (!_settings.value.playEntryAudio) return
+        // Do not interrupt actively playing Quran recitation
+        if (audioPlayer.playerState.value.isPlaying) return
+        lifecycleAudio.playEntryAudio()
+    }
+
+    /**
+     * Called when application is left/exited during normal Android lifecycle transitions.
+     * Plays «صَدَقَ اللَّهُ الْعَلِيُّ الْعَظِيمُ» if enabled.
+     */
+    fun onAppLeft() {
+        if (!_settings.value.playExitAudio) return
+        lifecycleAudio.playExitAudio()
+    }
+
     // =================== PLANNING ACTIONS ===================
 
     fun createPlan(
@@ -625,7 +980,7 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
 
                 val actualTotalDays = maxOf(1, tempSchedule.size)
                 val oneDayMillis = 24L * 60L * 60L * 1000L
-                val endMillis = startDateMillis + (actualTotalDays * oneDayMillis)
+                val endMillis = startDateMillis + ((actualTotalDays - 1) * oneDayMillis)
 
                 val planEntity = com.example.persianquran.data.local.ReadingPlanEntity(
                     title = safeTitle,
@@ -804,6 +1159,7 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         audioPlayer.stop()
+        lifecycleAudio.release()
     }
 }
 

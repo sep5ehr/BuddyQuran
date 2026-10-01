@@ -1,5 +1,6 @@
 package com.example.persianquran.data.local
 
+import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -9,6 +10,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
@@ -292,4 +294,21 @@ interface QuranDao {
 )
 abstract class QuranDatabase : RoomDatabase() {
     abstract fun quranDao(): QuranDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: QuranDatabase? = null
+
+        fun getInstance(context: Context): QuranDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    QuranDatabase::class.java,
+                    "persian_quran.db"
+                ).fallbackToDestructiveMigration().build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
 }

@@ -2,9 +2,16 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.example.R
+
+// KFGQPC Uthmanic Script HAFS Font (Official King Fahd Complex Font)
+val KfgqpcUthmanicFontFamily = FontFamily(
+    Font(R.font.kfgqpc_hafs_uthmanic, FontWeight.Normal)
+)
 
 // Typography optimized for Persian (Farsi) reading and Arabic Quranic scriptures
 val Typography = Typography(

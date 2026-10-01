@@ -1,5 +1,6 @@
 package com.example.persianquran.ui.screens
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,10 +30,12 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +62,9 @@ import com.example.persianquran.data.local.BookmarkEntity
 import com.example.persianquran.data.local.ReadingProgressEntity
 import com.example.persianquran.data.model.ChecklistItem
 import com.example.persianquran.data.model.PlanDaySchedule
+import com.example.persianquran.data.model.QuranFont
 import com.example.persianquran.data.model.ReadingPlan
+import com.example.persianquran.data.model.toFontFamily
 import com.example.persianquran.data.surah.QuranMetadata
 import com.example.persianquran.data.surah.toPersianDigits
 
@@ -70,8 +76,11 @@ fun HomeScreen(
     todayPlanItem: PlanDaySchedule?,
     checklistItems: List<ChecklistItem>,
     onOpenSurah: (Int, Int) -> Unit,
+    onOpenPage: ((Int) -> Unit)? = null,
+    onOpenPlanDay: ((PlanDaySchedule) -> Unit)? = null,
     onNavigateToSurahs: () -> Unit,
-    onNavigateToSearch: () -> Unit,
+    onNavigateToQuranFacts: () -> Unit,
+    onNavigateToSearch: () -> Unit = {},
     onNavigateToBookmarks: () -> Unit,
     onNavigateToPlanning: () -> Unit,
     onNavigateToSchedule: () -> Unit,
@@ -79,8 +88,21 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onToggleDayCompletion: (Long, Int, Boolean) -> Unit,
     onToggleChecklistItem: (Long, Boolean) -> Unit,
+    quranFont: QuranFont = QuranFont.OLD,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val shareInvitationMessage = "سلام! شما به همراه قرآن دعوت شده اید. لینک دانلود برنامه برای شما قرار داده شده است:\nhttps://github.com/sep5ehr/BuddyQuran/releases/download/2.1.1/buddyquran2.1.1.apk\n\nما را از دعای خیرتان فراموش نکنید!"
+
+    fun shareApp() {
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_TEXT, shareInvitationMessage)
+            type = "text/plain"
+        }
+        val shareIntent = Intent.createChooser(sendIntent, "اشتراک‌گذاری همراه قرآن")
+        context.startActivity(shareIntent)
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -96,38 +118,54 @@ fun HomeScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp, horizontal = 20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontFamily = FontFamily.Serif,
-                            fontSize = 21.sp,
-                            textAlign = TextAlign.Center
-                        ),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    IconButton(
+                        onClick = { shareApp() },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                            .testTag("btn_share_app")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "اشتراک‌گذاری برنامه",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp, horizontal = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFamily = quranFont.toFontFamily(),
+                                fontSize = 21.sp,
+                                textAlign = TextAlign.Center
+                            ),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
 
-                    Text(
-                        text = "همراه قرآن",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "همراه قرآن",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
 
-                    Text(
-                        text = "ساخته شده توسط سپهر قلعه سفیدی",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
-                    )
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "ساخته شده توسط سپهر قلعه سفیدی",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                        )
+                    }
                 }
             }
         }
@@ -147,9 +185,10 @@ fun HomeScreen(
                     NavigationCardItem("سوره‌ها", "فهرست ۱۱۴ سوره", Icons.Default.MenuBook, onNavigateToSurahs),
                     NavigationCardItem("برنامه‌ریزی", "برنامه مطالعه و ختم", Icons.Default.CalendarMonth, onNavigateToPlanning),
                     NavigationCardItem("زمان‌بندی", "جدول روزانه مطالعه", Icons.Default.DateRange, onNavigateToSchedule),
-                    NavigationCardItem("چک‌لیست", "عادات و تکالیف روزانه", Icons.Default.FormatListBulleted, onNavigateToChecklist),
-                    NavigationCardItem("جستجو", "جستجو در آیات و ترجمه", Icons.Default.Search, onNavigateToSearch),
+                    NavigationCardItem("چک‌لیست", "جدول برنامه تلاوت", Icons.Default.FormatListBulleted, onNavigateToChecklist),
+                    NavigationCardItem("دانستنی‌های قرآنی", "نکات جذاب، تاریخی و تفسیری", Icons.Default.Lightbulb, onNavigateToQuranFacts),
                     NavigationCardItem("نشان‌ها", "${bookmarks.size.toPersianDigits()} آیه ذخیره‌شده", Icons.Default.Bookmark, onNavigateToBookmarks),
+                    NavigationCardItem("اشتراک‌گذاری", "دعوت دوستان به برنامه", Icons.Default.Share, { shareApp() }),
                     NavigationCardItem("تنظیمات", "قلم، قاری و درباره", Icons.Default.Settings, onNavigateToSettings)
                 )
 
@@ -180,11 +219,19 @@ fun HomeScreen(
             val surahId = readingProgress?.surahNumber ?: 1
             val verseNum = readingProgress?.verseNumber ?: 1
             val surahName = readingProgress?.surahNamePersian ?: "حمد"
+            val isPageBased = surahName.startsWith("صفحه ")
+            val pageNum = if (isPageBased) surahName.removePrefix("صفحه ").trim().toIntOrNull() else null
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onOpenSurah(surahId, verseNum) }
+                    .clickable {
+                        if (pageNum != null && onOpenPage != null) {
+                            onOpenPage(pageNum)
+                        } else {
+                            onOpenSurah(surahId, verseNum)
+                        }
+                    }
                     .testTag("continue_reading_card"),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -222,7 +269,7 @@ fun HomeScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "سوره $surahName - آیه ${verseNum.toPersianDigits()}",
+                                text = if (isPageBased) surahName else "سوره $surahName - آیه ${verseNum.toPersianDigits()}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -325,7 +372,13 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Button(
-                                    onClick = { onOpenSurah(todayPlanItem.startSurahId, todayPlanItem.startVerse) },
+                                    onClick = {
+                                        if (onOpenPlanDay != null) {
+                                            onOpenPlanDay(todayPlanItem)
+                                        } else {
+                                            onOpenSurah(todayPlanItem.startSurahId, todayPlanItem.startVerse)
+                                        }
+                                    },
                                     modifier = Modifier.weight(1.2f),
                                     shape = RoundedCornerShape(10.dp)
                                 ) {
@@ -469,88 +522,7 @@ fun HomeScreen(
             }
         }
 
-        // Quick Surahs (سوره‌های پرفضیلت)
-        item {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "سوره‌های پرفضیلت",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "مشاهده همه",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clickable { onNavigateToSurahs() }
-                            .padding(4.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val featuredSurahIds = listOf(36, 55, 56, 67, 18, 1)
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(featuredSurahIds) { sId ->
-                        val surah = QuranMetadata.getSurahById(sId)
-                        if (surah != null) {
-                            Card(
-                                modifier = Modifier
-                                    .width(140.dp)
-                                    .clickable { onOpenSurah(surah.id, 1) }
-                                    .testTag("featured_surah_${surah.id}"),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = surah.id.toPersianDigits(),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = surah.namePersian,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${surah.versesCount.toPersianDigits()} آیه",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Footer: همراه قرآن & سپهر قلعه سفیدی
+        // Footer: سپهر قلعه سفیدی
         item {
             Column(
                 modifier = Modifier
@@ -558,12 +530,6 @@ fun HomeScreen(
                     .padding(top = 16.dp, bottom = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "همراه قرآن • نگارش ۱.۰.۰",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "ساخته شده توسط سپهر قلعه سفیدی",
                     style = MaterialTheme.typography.labelMedium,

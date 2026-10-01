@@ -46,6 +46,18 @@ enum class QuranTheme {
     LIGHT, DARK, SYSTEM
 }
 
+enum class QuranFont(val titlePersian: String) {
+    OLD("قدیمی"),
+    NEW("جدید")
+}
+
+fun QuranFont.toFontFamily(): androidx.compose.ui.text.font.FontFamily {
+    return when (this) {
+        QuranFont.OLD -> com.example.ui.theme.KfgqpcUthmanicFontFamily
+        QuranFont.NEW -> androidx.compose.ui.text.font.FontFamily.Serif
+    }
+}
+
 enum class AudioQuality(val titlePersian: String) {
     AUTO("خودکار"),
     HIGH("کیفیت بالا"),
@@ -59,11 +71,17 @@ data class ReaderSettings(
     val lineSpacing: Float = 1.6f,
     val showTranslation: Boolean = true,
     val theme: QuranTheme = QuranTheme.SYSTEM,
+    val quranFont: QuranFont = QuranFont.OLD,
     val selectedReciterId: Int = 7, // Default: Mishari Rashid al-Afasy
     val audioQuality: AudioQuality = AudioQuality.AUTO,
     val playbackSpeed: Float = 1.0f,
     val autoAdvance: Boolean = true,
-    val repeatAyah: Boolean = false
+    val repeatAyah: Boolean = false,
+    val dailyReminderEnabled: Boolean = false,
+    val reminderHour: Int = 20,
+    val reminderMinute: Int = 0,
+    val playEntryAudio: Boolean = true,
+    val playExitAudio: Boolean = true
 )
 
 data class AudioTrackState(
@@ -83,8 +101,7 @@ data class AudioTrackState(
 enum class PlanMethod(val titlePersian: String, val descriptionPersian: String) {
     PAGES("بر اساس صفحات", "تقسیم ۶۰۴ صفحه مصحف عثمان‌طه بر روزهای برنامه"),
     VERSES("بر اساس آیات", "تقسیم آیات بر حسب تعداد مشخص در هر روز"),
-    SURAHS("بر اساس سوره", "تقسیم سوره‌های قرآن به صورت فصل‌بندی روزانه"),
-    RANGE("بر اساس محدوده", "انتخاب سوره و آیه آغازین و پایانی دلخواه")
+    SURAHS("بر اساس سوره", "تقسیم سوره‌های قرآن به صورت فصل‌بندی روزانه")
 }
 
 data class ReadingPlan(

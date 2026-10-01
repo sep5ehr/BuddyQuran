@@ -174,15 +174,8 @@ object QuranMetadata {
 
     fun getSurahByPage(page: Int): Surah {
         val clamped = page.coerceIn(1, 604)
-        var matched = surahs.first()
-        for (s in surahs) {
-            if (s.startPage <= clamped) {
-                matched = s
-            } else {
-                break
-            }
-        }
-        return matched
+        val firstVerse = QuranPageMetadata.getFirstVerseOnPage(clamped)
+        return getSurahById(firstVerse.surahId) ?: surahs.first()
     }
 
     fun calculateScheduleForPlan(
@@ -204,25 +197,24 @@ object QuranMetadata {
         when (method) {
             com.example.persianquran.data.model.PlanMethod.PAGES -> {
                 val sPage = startPageInput.coerceIn(1, 604)
-                val ePage = endPageInput.coerceIn(sPage, 604)
-                val totalPages = ePage - sPage + 1
+                val ePage = endPageInput.coerceIn(1, 604)
+                val pageSequence = QuranPageMetadata.generatePageSequence(sPage, ePage)
+                val totalPages = pageSequence.size
                 val target = if (dailyTarget > 0) dailyTarget else maxOf(1, (totalPages + totalDays - 1) / totalDays)
-                val calculatedDays = (totalPages + target - 1) / target
+                val chunks = pageSequence.chunked(target)
 
-                for (d in 1..calculatedDays) {
-                    val dayStartPage = sPage + (d - 1) * target
-                    val dayEndPage = minOf(ePage, dayStartPage + target - 1)
-                    if (dayStartPage > ePage) break
-
-                    val sSurah = getSurahByPage(dayStartPage)
-                    val eSurah = getSurahByPage(dayEndPage)
-                    val dateMillis = startDateMillis + (d - 1) * oneDayMillis
+                chunks.forEachIndexed { index, dayPages ->
+                    val d = index + 1
+                    val dayStartPage = dayPages.first()
+                    val dayEndPage = dayPages.last()
+                    val boundaries = QuranPageMetadata.getPageRangeBoundaries(dayStartPage, dayEndPage)
+                    val dateMillis = startDateMillis + (index * oneDayMillis)
                     val dateFormatted = PersianDateHelper.formatPersianDate(dateMillis)
 
                     val desc = if (dayStartPage == dayEndPage) {
-                        "صفحه ${dayStartPage.toPersianDigits()} (${sSurah.namePersian})"
+                        "صفحه ${dayStartPage.toPersianDigits()} (${boundaries.startSurahName} آیه ${boundaries.startVerse.toPersianDigits()})"
                     } else {
-                        "صفحات ${dayStartPage.toPersianDigits()} تا ${dayEndPage.toPersianDigits()} (${sSurah.namePersian})"
+                        "صفحات ${dayStartPage.toPersianDigits()} تا ${dayEndPage.toPersianDigits()} (${boundaries.startSurahName} ${boundaries.startVerse.toPersianDigits()} تا ${boundaries.endSurahName} ${boundaries.endVerse.toPersianDigits()})"
                     }
 
                     schedule.add(
@@ -231,12 +223,12 @@ object QuranMetadata {
                             dayNumber = d,
                             dateMillis = dateMillis,
                             dateFormatted = dateFormatted,
-                            startSurahId = sSurah.id,
-                            startSurahName = sSurah.namePersian,
-                            startVerse = 1,
-                            endSurahId = eSurah.id,
-                            endSurahName = eSurah.namePersian,
-                            endVerse = eSurah.versesCount,
+                            startSurahId = boundaries.startSurahId,
+                            startSurahName = boundaries.startSurahName,
+                            startVerse = boundaries.startVerse,
+                            endSurahId = boundaries.endSurahId,
+                            endSurahName = boundaries.endSurahName,
+                            endVerse = boundaries.endVerse,
                             startPage = dayStartPage,
                             endPage = dayEndPage,
                             rangeDescription = desc,
@@ -290,8 +282,7 @@ object QuranMetadata {
                 }
             }
 
-            com.example.persianquran.data.model.PlanMethod.VERSES,
-            com.example.persianquran.data.model.PlanMethod.RANGE -> {
+            com.example.persianquran.data.model.PlanMethod.VERSES -> {
                 val globalStart = getGlobalVerseIndex(startSurahId, startVerse)
                 val globalEnd = getGlobalVerseIndex(endSurahId, endVerse)
                 val totalVersesCount = maxOf(1, globalEnd - globalStart + 1)

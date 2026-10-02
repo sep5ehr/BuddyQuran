@@ -477,7 +477,7 @@ class QuranRepository(
         // Automatically create a linked checklist item for today's reading
         quranDao.insertChecklistItem(
             com.example.persianquran.data.local.ChecklistItemEntity(
-                title = "مطالعه امروز (${plan.title})",
+                title = "مطالعه این برنامه (${plan.title})",
                 category = "برنامه‌ریزی",
                 isCompleted = false,
                 isDaily = true,

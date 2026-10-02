@@ -53,6 +53,12 @@ fun String.sanitizeQuranText(): String {
         .replace("\u063F", "") // ARABIC LETTER FARSI YEH placeholder
         .replace("\u065F", "") // ARABIC WAVY HAMZA BELOW
         .replace("\u066F", "") // ARABIC LETTER DOTLESS QAF placeholder
+        .replace("\u06DE", "") // ARABIC START OF RUB EL HIZB (often renders as star symbol ۞)
+        .replace("⭐", "")
+        .replace("🌟", "")
+        .replace("★", "")
+        .replace("☆", "")
+        .replace("*", "")
 }
 
 /**

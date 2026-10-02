@@ -188,6 +188,108 @@ fun ChecklistScreen(
             }
         }
 
+        // Active Plan Quick Switcher (تغییر برنامه فعال)
+        if (allPlans.isNotEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "تغییر برنامه فعال:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            if (allPlans.size > 1 && onActivatePlan != null) {
+                                TextButton(
+                                    onClick = { showSwitchPlanDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "مشاهده همه (${allPlans.size.toPersianDigits()})",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(vertical = 2.dp)
+                        ) {
+                            items(allPlans, key = { it.id }) { plan ->
+                                val isCurrent = plan.id == activePlan?.id
+                                FilterChip(
+                                    selected = isCurrent,
+                                    onClick = {
+                                        if (!isCurrent && onActivatePlan != null) {
+                                            onActivatePlan(plan.id)
+                                        }
+                                    },
+                                    label = {
+                                        Text(
+                                            text = plan.title + if (isCurrent) " (فعال)" else "",
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    leadingIcon = if (isCurrent) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                )
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = onNavigateToPlanning,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(text = "برنامه جدید", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Full Plan Schedule
         if (activePlan == null || schedule.isEmpty()) {
                 // Empty state when no plan is active
@@ -279,7 +381,7 @@ fun ChecklistScreen(
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    if (allPlans.size > 1 && onActivatePlan != null) {
+                                    if (allPlans.isNotEmpty() && onActivatePlan != null) {
                                         OutlinedButton(
                                             onClick = { showSwitchPlanDialog = true },
                                             shape = RoundedCornerShape(10.dp),
@@ -392,7 +494,7 @@ fun ChecklistScreen(
                             ) {
                                 Text(
                                     text = if (selectedFilter == ScheduleFilter.UNCOMPLETED)
-                                        "تمام برنامه‌های تا به امروز با موفقیت انجام شده‌اند! 🎉"
+                                        "تمام برنامه‌های تا به امروز با موفقیت انجام شده‌اند."
                                     else
                                         "موردی با این فیلتر یافت نشد.",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -419,6 +521,21 @@ fun ChecklistScreen(
                     }
                 }
             }
+        }
+
+        if (showSwitchPlanDialog) {
+            SwitchPlanDialog(
+                allPlans = allPlans,
+                activePlanId = activePlan?.id,
+                onDismiss = { showSwitchPlanDialog = false },
+                onSelectPlan = { planId ->
+                    onActivatePlan?.invoke(planId)
+                },
+                onNavigateToPlanning = {
+                    showSwitchPlanDialog = false
+                    onNavigateToPlanning()
+                }
+            )
         }
     }
 
@@ -560,21 +677,6 @@ fun ScheduleDayCard(
                 }
             }
         }
-    }
-
-    if (showSwitchPlanDialog) {
-        SwitchPlanDialog(
-            allPlans = allPlans,
-            activePlanId = activePlan?.id,
-            onDismiss = { showSwitchPlanDialog = false },
-            onSelectPlan = { planId ->
-                onActivatePlan?.invoke(planId)
-            },
-            onNavigateToPlanning = {
-                showSwitchPlanDialog = false
-                onNavigateToPlanning()
-            }
-        )
     }
 }
 

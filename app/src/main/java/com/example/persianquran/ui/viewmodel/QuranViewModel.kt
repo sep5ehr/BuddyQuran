@@ -526,7 +526,7 @@ class QuranViewModel(application: Application) : AndroidViewModel(application) {
         }
         _activeStudyDay.value = null
         _nextPlanDay.value = null
-        Toast.makeText(getApplication(), "مطالعه امروز با موفقیت ثبت شد.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(getApplication(), "مطالعه این برنامه با موفقیت ثبت شد.", Toast.LENGTH_SHORT).show()
         navigateTo(Screen.Checklist)
     }
 

@@ -173,8 +173,8 @@ object DailyPlanReminderManager {
         )
 
         val notifTitle = "وقت مطالعه همراه قرآن رسیده است"
-        val notifBody = "برنامه مطالعه امروزتان را انجام دهید."
-        val notifDetail = "برنامه: ${activePlan.title}\nسهمیه امروز: ${todayAssignment.rangeDescription}"
+        val notifBody = "مطالعه این برنامه را انجام دهید."
+        val notifDetail = "برنامه: ${activePlan.title}\nسهمیه: ${todayAssignment.rangeDescription}"
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(com.example.R.mipmap.ic_launcher)

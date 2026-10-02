@@ -346,11 +346,11 @@ fun PlanningScreen(
                 }
             }
 
-            // Today's Reading Section (مطالعه امروز)
+            // Today's Reading Section (مطالعه این برنامه)
             if (todayItem != null) {
                 item {
                     Text(
-                        text = "مطالعه امروز",
+                        text = "مطالعه این برنامه",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
